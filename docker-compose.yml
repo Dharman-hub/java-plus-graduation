@@ -1,14 +1,71 @@
 services:
-  stats-server:
-    ports:
-      - "9090:9090"
-
   stats-db:
     image: postgres:16.1
-
-  ewm-service:
+    container_name: postgres-ewm-stats-db
     ports:
-      - "8080:8080"
+      - "6542:5432"
+    environment:
+      - POSTGRES_USER=stat
+      - POSTGRES_PASSWORD=stat
+      - POSTGRES_DB=ewm-stats
+    volumes:
+      - stats-db-data:/var/lib/postgresql/data/
+      - ./stat/stat-server/src/main/resources/schema-stat.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stat -d ewm-stats"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    restart: on-failure
+
+  stats-server:
+    build: stat/stat-server
+    container_name: stat-server
+    ports:
+      - "9090:9090"
+    depends_on:
+      stats-db:
+        condition: service_healthy
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://stats-db:5432/ewm-stats
+      - SPRING_DATASOURCE_USERNAME=stat
+      - SPRING_DATASOURCE_PASSWORD=stat
+    restart: on-failure
 
   ewm-db:
     image: postgres:16.1
+    container_name: postgres-ewm-main-db
+    ports:
+      - "6541:5432"
+    environment:
+      - POSTGRES_USER=main
+      - POSTGRES_PASSWORD=main
+      - POSTGRES_DB=ewm-main
+    volumes:
+      - ewm-db-data:/var/lib/postgresql/data/
+      - ./main-service/src/main/resources/schema-main.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U main -d ewm-main" ]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    restart: on-failure
+
+  ewm-service:
+    build: ./main-service
+    container_name: ewm-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      ewm-db:
+        condition: service_healthy
+    environment:
+      - CLIENT_URL=http://stats-server:9090
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://ewm-db:5432/ewm-main
+      - SPRING_DATASOURCE_USERNAME=main
+      - SPRING_DATASOURCE_PASSWORD=main
+    restart: on-failure
+
+volumes:
+  stats-db-data:
+  ewm-db-data:
