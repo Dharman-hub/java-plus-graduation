@@ -4,11 +4,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.policy.MaxAttemptsRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
+import ru.practicum.stats.client.exception.StatsServerUnavailable;
 import ru.practicum.stats.dto.EndpointHitDto;
 import ru.practicum.stats.dto.ViewStatsDto;
 
@@ -22,12 +28,19 @@ import java.util.List;
 public class StatClient {
 
     private static final Logger log = LoggerFactory.getLogger(StatClient.class);
+
     private final RestClient restClient;
+    private final DiscoveryClient discoveryClient;
+    private final RetryTemplate retryTemplate;
+    private final String statsServiceId;
 
     @Autowired
-    public StatClient(@Value("${client.url}") String statUrl) {
+    public StatClient(DiscoveryClient discoveryClient,
+                      @Value("${stats-service-id}") String statsServiceId) {
+        this.discoveryClient = discoveryClient;
+        this.statsServiceId = statsServiceId;
+        this.retryTemplate = createRetryTemplate();
         this.restClient = RestClient.builder()
-                .baseUrl(statUrl)
                 .defaultHeader("Content-Type", "application/json")
                 .defaultStatusHandler(HttpStatusCode::is4xxClientError, (request, response) -> {
                     log.error("Client error: {} - {}", response.getStatusCode(),
@@ -42,6 +55,9 @@ public class StatClient {
 
     public StatClient(RestClient restClient) {
         this.restClient = restClient;
+        this.discoveryClient = null;
+        this.retryTemplate = null;
+        this.statsServiceId = null;
     }
 
     public void hit(String app, String uri, String ip, LocalDateTime timestamp) {
@@ -54,7 +70,7 @@ public class StatClient {
 
         try {
             restClient.post()
-                    .uri("/hit")
+                    .uri(makeUri("/hit"))
                     .body(dto)
                     .retrieve()
                     .toBodilessEntity();
@@ -86,19 +102,57 @@ public class StatClient {
 
         try {
             List<ViewStatsDto> stats = restClient.get()
-                    .uri(builder.build().encode().toString())
+                    .uri(makeUri(builder.build().encode().toString()))
                     .retrieve()
                     .body(new ParameterizedTypeReference<List<ViewStatsDto>>() {
                     });
 
-            log.info("Successfully requesting parameters to stats-service: start={}, end={}, uris={}, unique={} and received stats. Count={}",
-                    start, end, uris, unique,
-                    stats != null ? stats.size() : 0);
+            log.info(
+                    "Successfully requesting parameters to stats-service: start={}, end={}, uris={}, unique={} and received stats. Count={}",
+                    start, end, uris, unique, stats != null ? stats.size() : 0
+            );
 
             return stats;
         } catch (Exception e) {
             log.error("Failed to get stats: {}", e.getMessage(), e);
             return Collections.emptyList();
         }
+    }
+
+    private String makeUri(String path) {
+        if (discoveryClient == null) {
+            return path;
+        }
+
+        ServiceInstance instance = retryTemplate.execute(context -> getInstance());
+
+        return "http://" + instance.getHost() + ":" + instance.getPort() + path;
+    }
+
+    private ServiceInstance getInstance() {
+        try {
+            return discoveryClient
+                    .getInstances(statsServiceId)
+                    .getFirst();
+        } catch (Exception exception) {
+            throw new StatsServerUnavailable(
+                    "Ошибка обнаружения адреса сервиса статистики с id: " + statsServiceId,
+                    exception
+            );
+        }
+    }
+
+    private RetryTemplate createRetryTemplate() {
+        RetryTemplate retryTemplate = new RetryTemplate();
+
+        FixedBackOffPolicy backOffPolicy = new FixedBackOffPolicy();
+        backOffPolicy.setBackOffPeriod(3000L);
+        retryTemplate.setBackOffPolicy(backOffPolicy);
+
+        MaxAttemptsRetryPolicy retryPolicy = new MaxAttemptsRetryPolicy();
+        retryPolicy.setMaxAttempts(3);
+        retryTemplate.setRetryPolicy(retryPolicy);
+
+        return retryTemplate;
     }
 }
