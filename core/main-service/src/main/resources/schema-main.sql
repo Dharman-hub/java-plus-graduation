@@ -79,4 +79,4 @@ CREATE INDEX idx_comments_event_author_date
     ON comments(event_id, author_id, creation_date ASC);
 
 CREATE INDEX idx_comments_comment_id
-    ON comments(comment_id) WHERE comment_id IS NOT NULL;
+    ON comments(comment_id);
