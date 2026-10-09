@@ -32,40 +32,81 @@ services:
       - SPRING_DATASOURCE_PASSWORD=stat
     restart: on-failure
 
-  ewm-db:
+  user-db:
     image: postgres:16.1
-    container_name: postgres-ewm-main-db
+    container_name: postgres-ewm-user-db
     ports:
       - "6541:5432"
     environment:
-      - POSTGRES_USER=main
-      - POSTGRES_PASSWORD=main
-      - POSTGRES_DB=ewm-main
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=user
+      - POSTGRES_DB=ewm-user
     volumes:
-      - ewm-db-data:/var/lib/postgresql/data/
-      - ./core/main-service/src/main/resources/schema-main.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - user-db-data:/var/lib/postgresql/data/
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U main -d ewm-main" ]
+      test: ["CMD-SHELL", "pg_isready -U user -d ewm-user"]
       timeout: 5s
       interval: 5s
       retries: 10
     restart: on-failure
 
-  ewm-service:
-    build: ./core/main-service
-    container_name: ewm-service
+  event-db:
+    image: postgres:16.1
+    container_name: postgres-ewm-event-db
     ports:
-      - "8080:8080"
-    depends_on:
-      ewm-db:
-        condition: service_healthy
+      - "6543:5432"
     environment:
-      - CLIENT_URL=http://stats-server:9090
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://ewm-db:5432/ewm-main
-      - SPRING_DATASOURCE_USERNAME=main
-      - SPRING_DATASOURCE_PASSWORD=main
+      - POSTGRES_USER=event
+      - POSTGRES_PASSWORD=event
+      - POSTGRES_DB=ewm-event
+    volumes:
+      - event-db-data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U event -d ewm-event"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    restart: on-failure
+
+  request-db:
+    image: postgres:16.1
+    container_name: postgres-ewm-request-db
+    ports:
+      - "6544:5432"
+    environment:
+      - POSTGRES_USER=request
+      - POSTGRES_PASSWORD=request
+      - POSTGRES_DB=ewm-request
+    volumes:
+      - request-db-data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U request -d ewm-request"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    restart: on-failure
+
+  review-db:
+    image: postgres:16.1
+    container_name: postgres-ewm-review-db
+    ports:
+      - "6545:5432"
+    environment:
+      - POSTGRES_USER=review
+      - POSTGRES_PASSWORD=review
+      - POSTGRES_DB=ewm-review
+    volumes:
+      - review-db-data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U review -d ewm-review"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
     restart: on-failure
 
 volumes:
   stats-db-data:
-  ewm-db-data:
+  user-db-data:
+  event-db-data:
+  request-db-data:
+  review-db-data:
