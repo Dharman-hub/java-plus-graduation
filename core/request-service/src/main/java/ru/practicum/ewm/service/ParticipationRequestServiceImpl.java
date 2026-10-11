@@ -18,6 +18,8 @@ import ru.practicum.ewm.exception.ValidationException;
 import ru.practicum.ewm.mapper.RequestMapper;
 import ru.practicum.ewm.model.ParticipationRequest;
 import ru.practicum.ewm.model.RequestStatus;
+import ru.practicum.ewm.stats.proto.ActionTypeProto;
+import ru.practicum.stats.client.CollectorGrpcClient;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +36,7 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
     private final ParticipationRequestRepository requestRepository;
     private final EventClient eventClient;
     private final UserClient userClient;
+    private final CollectorGrpcClient collectorGrpcClient;
 
     @Override
     public List<ParticipationRequestDto> getRequestsByEventId(long ownerId, long eventId) {
@@ -208,6 +211,8 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
         participationRequest = requestRepository.save(participationRequest);
 
         log.info("request saved with id: {}", participationRequest.getId());
+
+        collectorGrpcClient.sendUserAction(userId, eventId, ActionTypeProto.ACTION_REGISTER);
 
         return RequestMapper.toDto(participationRequest);
     }

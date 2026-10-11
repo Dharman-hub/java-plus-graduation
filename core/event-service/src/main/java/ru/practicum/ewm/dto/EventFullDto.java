@@ -24,5 +24,5 @@ public class EventFullDto {
     private String eventDate;
     private String publishedOn;
     private EventState state;
-    private Long views;
+    private double rating;
 }
