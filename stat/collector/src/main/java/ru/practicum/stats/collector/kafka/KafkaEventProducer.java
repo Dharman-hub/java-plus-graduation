@@ -22,7 +22,6 @@ public class KafkaEventProducer {
     public void send(UserActionAvro action) {
         ProducerRecord<String, UserActionAvro> record = new ProducerRecord<>(
                 topic,
-                String.valueOf(action.getUserId()),
                 action
         );
 
