@@ -8,7 +8,7 @@ import java.time.format.DateTimeFormatter;
 public class EventMapper {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    public static EventFullDto toFullDto(Event event, Long views, UserDto initiator) {
+    public static EventFullDto toFullDto(Event event, double rating, UserDto initiator) {
         return EventFullDto.builder()
                 .id(event.getId())
                 .paid(event.getPaid())
@@ -25,11 +25,11 @@ public class EventMapper {
                 .participantLimit(event.getParticipantLimit())
                 .requestModeration(event.getRequestModeration())
                 .annotation(event.getAnnotation())
-                .views(views == null ? 0L : views)
+                .rating(rating)
                 .build();
     }
 
-    public static EventShortDto toShortDto(Event event, Long views, UserDto initiator) {
+    public static EventShortDto toShortDto(Event event, double rating, UserDto initiator) {
         return EventShortDto.builder()
                 .id(event.getId())
                 .paid(event.getPaid())
@@ -39,7 +39,7 @@ public class EventMapper {
                 .initiator(new UserShortDto(initiator.getId(), initiator.getName()))
                 .eventDate(event.getEventDate().format(FORMATTER))
                 .annotation(event.getAnnotation())
-                .views(views == null ? 0L : views)
+                .rating(rating)
                 .build();
     }
 }

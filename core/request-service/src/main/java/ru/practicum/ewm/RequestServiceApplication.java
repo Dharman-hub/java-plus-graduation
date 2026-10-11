@@ -3,8 +3,11 @@ package ru.practicum.ewm;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.context.annotation.Import;
+import ru.practicum.stats.client.CollectorGrpcClient;
 
 @SpringBootApplication
+@Import(CollectorGrpcClient.class)
 @EnableFeignClients(basePackages = "ru.practicum.ewm.client.request")
 public class RequestServiceApplication {
 
