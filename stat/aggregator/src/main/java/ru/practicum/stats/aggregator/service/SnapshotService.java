@@ -58,7 +58,11 @@ public class SnapshotService {
                 continue;
             }
 
-            double otherWeight = entry.getValue().getOrDefault(userId, 0.0);
+            Double otherWeight = entry.getValue().get(userId);
+
+            if (otherWeight == null) {
+                continue;
+            }
 
             long first = Math.min(eventId, otherEventId);
             long second = Math.max(eventId, otherEventId);
