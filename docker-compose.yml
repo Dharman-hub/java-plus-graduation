@@ -1,36 +1,35 @@
 services:
-  stats-db:
-    image: postgres:16.1
-    container_name: postgres-ewm-stats-db
-    ports:
-      - "6542:5432"
-    environment:
-      - POSTGRES_USER=stat
-      - POSTGRES_PASSWORD=stat
-      - POSTGRES_DB=ewm-stats
-    volumes:
-      - stats-db-data:/var/lib/postgresql/data/
-      - ./stat/stat-server/src/main/resources/schema-stat.sql:/docker-entrypoint-initdb.d/01-init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stat -d ewm-stats"]
-      timeout: 5s
-      interval: 5s
-      retries: 10
-    restart: on-failure
 
-  stats-server:
-    build: stat/stat-server
-    container_name: stat-server
-    ports:
-      - "9090:9090"
-    depends_on:
-      stats-db:
-        condition: service_healthy
+  analyzer-db:
+    image: postgres:16.1
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://stats-db:5432/ewm-stats
-      - SPRING_DATASOURCE_USERNAME=stat
-      - SPRING_DATASOURCE_PASSWORD=stat
-    restart: on-failure
+      POSTGRES_DB: analyzer_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5438:5432"
+
+  kafka:
+    image: confluentinc/confluent-local:7.4.3
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://localhost:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+
+  kafka-init-topics:
+    image: confluentinc/confluent-local:7.4.3
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        until kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do
+          sleep 2
+        done
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.user-actions.v1 --partitions 1 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.events-similarity.v1 --partitions 1 --replication-factor 1
 
   user-db:
     image: postgres:16.1
@@ -105,7 +104,6 @@ services:
     restart: on-failure
 
 volumes:
-  stats-db-data:
   user-db-data:
   event-db-data:
   request-db-data:

@@ -19,8 +19,7 @@ public interface EventService {
     List<EventShortDto> getPublicEvents(EventSearchParams params,
                                         HttpServletRequest request);
 
-    EventFullDto getPublicEventById(Long id,
-                                    HttpServletRequest request);
+    EventFullDto getPublicEventById(Long id, long userId);
 
     List<EventFullDto> getEventsByAdmin(AdminEventSearchParams params);
 
@@ -31,4 +30,8 @@ public interface EventService {
     void changeConfirmedRequests(Long eventId, Integer delta);
 
     List<EventRequestInfoDto> getEventsForInternal(List<Long> ids);
+
+    List<EventShortDto> getRecommendations(long userId);
+
+    void likeEvent(Long eventId, long userId);
 }

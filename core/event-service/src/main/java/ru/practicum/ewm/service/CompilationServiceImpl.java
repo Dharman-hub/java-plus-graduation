@@ -8,23 +8,21 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dao.CompilationRepository;
 import ru.practicum.ewm.dao.EventRepository;
 import ru.practicum.ewm.dto.CompilationDto;
 import ru.practicum.ewm.dto.CompilationsGetParams;
 import ru.practicum.ewm.dto.NewCompilationDto;
 import ru.practicum.ewm.dto.UpdateCompilationRequest;
+import ru.practicum.ewm.dto.UserDto;
 import ru.practicum.ewm.exception.NotFoundException;
 import ru.practicum.ewm.mapper.CompilationMapper;
 import ru.practicum.ewm.model.Compilation;
 import ru.practicum.ewm.model.Event;
 import ru.practicum.ewm.model.QCompilation;
-import ru.practicum.stats.client.StatClient;
-import ru.practicum.stats.dto.ViewStatsDto;
-import ru.practicum.ewm.client.UserClient;
-import ru.practicum.ewm.dto.UserDto;
+import ru.practicum.stats.client.AnalyzerGrpcClient;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -33,9 +31,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CompilationServiceImpl implements CompilationService {
+
     private final CompilationRepository compilationRepository;
     private final EventRepository eventRepository;
-    private final StatClient statClient;
+    private final AnalyzerGrpcClient analyzerGrpcClient;
     private final UserClient userClient;
 
     @Override
@@ -93,6 +92,7 @@ public class CompilationServiceImpl implements CompilationService {
 
         log.info("Обновление подборки: {}", compilation);
         Compilation updatedCompilation = compilationRepository.save(compilation);
+
         return getDto(updatedCompilation);
     }
 
@@ -100,6 +100,7 @@ public class CompilationServiceImpl implements CompilationService {
     public List<CompilationDto> getCompilations(CompilationsGetParams params) {
         log.info("Получение подборок событий (pinned={}, from={}, size={})",
                 params.getPinned(), params.getFrom(), params.getSize());
+
         int from = params.getFrom();
         int size = params.getSize();
 
@@ -117,21 +118,13 @@ public class CompilationServiceImpl implements CompilationService {
                 .distinct()
                 .toList();
 
-        Set<Long> allEventIds = allEvents.stream()
-                .map(Event::getId)
-                .collect(Collectors.toSet());
-
-        List<String> uris = allEventIds.stream()
-                .map(e -> "/events/" + e)
-                .toList();
-
-        Map<Long, Long> viewsByEventId = getStatsByUris(uris);
+        Map<Long, Double> ratingsByEventId = getRatingsByEvents(allEvents);
         Map<Long, UserDto> initiators = getInitiatorsByEvents(allEvents);
 
         return compilations.stream()
                 .map(comp -> CompilationMapper.toCompilationDto(
                         comp,
-                        viewsByEventId,
+                        ratingsByEventId,
                         initiators
                 ))
                 .collect(Collectors.toList());
@@ -140,6 +133,7 @@ public class CompilationServiceImpl implements CompilationService {
     @Override
     public CompilationDto getCompilationById(Long compId) {
         log.info("Получение подборки событий с id: {}", compId);
+
         Compilation compilation = compilationRepository.findById(compId)
                 .orElseThrow(() -> new NotFoundException("Подборка с id=" + compId + " не найдена"));
 
@@ -157,41 +151,30 @@ public class CompilationServiceImpl implements CompilationService {
         return predicate == null ? compilation.isNotNull() : predicate;
     }
 
-    private Map<Long, Long> getStatsByUris(List<String> uris) {
-
-        List<ViewStatsDto> stats = statClient.getStat(LocalDateTime.MIN, LocalDateTime.MAX, uris, false);
-
-        if (stats == null || stats.isEmpty()) {
+    private Map<Long, Double> getRatingsByEvents(Collection<Event> events) {
+        if (events.isEmpty()) {
             return Collections.emptyMap();
         }
 
-        Map<Long, Long> viewsMap = new LinkedHashMap<>();
-        for (ViewStatsDto dto : stats) {
-            String uri = dto.getUri();
-            Long id = Long.parseLong(
-                    uri.substring(
-                            uri.lastIndexOf('/') + 1));
-            viewsMap.put(id, dto.getHits());
-        }
+        List<Long> eventIds = events.stream()
+                .map(Event::getId)
+                .distinct()
+                .toList();
 
-        return viewsMap;
+        return analyzerGrpcClient.getInteractionsCount(eventIds)
+                .collect(Collectors.toMap(
+                        recommendation -> recommendation.getEventId(),
+                        recommendation -> recommendation.getScore()
+                ));
     }
 
     private CompilationDto getDto(Compilation compilation) {
-        Set<Long> allEventIds = compilation.getEvents().stream()
-                .map(Event::getId)
-                .collect(Collectors.toSet());
-
-        List<String> uris = allEventIds.stream()
-                .map(e -> "/events/" + e)
-                .toList();
-
-        Map<Long, Long> viewsByEventId = getStatsByUris(uris);
+        Map<Long, Double> ratingsByEventId = getRatingsByEvents(compilation.getEvents());
         Map<Long, UserDto> initiators = getInitiatorsByEvents(compilation.getEvents());
 
         return CompilationMapper.toCompilationDto(
                 compilation,
-                viewsByEventId,
+                ratingsByEventId,
                 initiators
         );
     }
